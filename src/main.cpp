@@ -36,7 +36,8 @@ int main() {
     fftw_complex* outB = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * npix);
 
     // Convert interleaved RGB to per-channel complex input
-    //#pragma omp parallel for
+    auto t_RGB_conversion = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel for
     for(int i = 0; i < npix; i++){
         inR[i][0] = static_cast<double>(img[3*i + 0]);
         inR[i][1] = 0.0;
@@ -45,6 +46,9 @@ int main() {
         inB[i][0] = static_cast<double>(img[3*i + 2]);
          inB[i][1] = 0.0;
     }
+    auto t_now = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> conversion_time = t_now - t_RGB_conversion;
+
     stbi_image_free(img);
 
     // Create forward FFT plans for each channel and execute
@@ -63,7 +67,8 @@ int main() {
     double max_dist = std::sqrt((double)cx*cx + (double)cy*cy);
 
     // Apply filter in frequency domain (centered coordinates)
-    //#pragma omp parallel for collapse(2)
+    auto t_filter = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel for collapse(2)
     for(int y = 0; y < height; ++y){
         for(int x = 0; x < width; ++x){
             int idx = y * width + x;
@@ -81,6 +86,8 @@ int main() {
             outB[idx][0] *= factor; outB[idx][1] *= factor;
         }
     }
+    t_now = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> filter_time = t_now - t_filter;
 
     // Prepare reverse buffers and backward plans
     fftw_complex* revR = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * npix);
@@ -96,7 +103,8 @@ int main() {
     fftw_execute(planB_b);
 
     // Normalize inverse FFT output
-    //#pragma omp parallel for collapse(2)
+    auto t_normalization = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel for collapse(2)
     for(int y = 0; y < height; ++y){
         for(int x = 0; x < width; ++x){
             int idx = y * width + x;
@@ -105,10 +113,13 @@ int main() {
             revB[idx][0] /= (npix);
         }
     }
+    t_now = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> normalization_time = t_now - t_normalization;
 
     // Convert back to interleaved 8-bit RGB
     unsigned char* output_image = new unsigned char[npix * 3];
-    //#pragma omp parallel for
+    auto t_reverse_conversion = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel for
     for(int i = 0; i < npix; ++i){
         double r = std::round(revR[i][0]);
         double g = std::round(revG[i][0]);
@@ -120,6 +131,8 @@ int main() {
         output_image[3*i + 1] = static_cast<unsigned char>(g);
         output_image[3*i + 2] = static_cast<unsigned char>(b);
     }
+    t_now = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> reverse_time = t_now - t_reverse_conversion;
 
     stbi_write_png("images/output.png", width, height, 3, output_image, width * 3);
     auto t_end = std::chrono::high_resolution_clock::now();
@@ -127,6 +140,10 @@ int main() {
     std::chrono::duration<double> elapsed = t_end - t_start;
     std::cout << "Total execution time: "
           << elapsed.count() << " seconds\n";
+    std::cout << "RGB conversion: " << conversion_time.count() << " s\n";
+    std::cout << "Frequency filter: " << filter_time.count() << " s\n";
+    std::cout << "Normalization: " << normalization_time.count() << " s\n";
+    std::cout << "Reverse conversion: " << reverse_time.count() << " s\n";
 
     // Cleanup
     delete[] output_image;
