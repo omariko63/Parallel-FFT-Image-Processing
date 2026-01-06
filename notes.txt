@@ -1,0 +1,2 @@
+1- fftw: https://www.fftw.org/download.html
+2- opencv: https://opencv.org/releases/
