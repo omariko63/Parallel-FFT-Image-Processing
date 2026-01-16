@@ -6,6 +6,8 @@
 #include <cstring>
 #include <algorithm>
 #include <chrono>
+#include <iomanip>
+#include <omp.h>
 
 #include "stb_image.h"
 #include "stb_image_write.h"
@@ -15,7 +17,7 @@ int main() {
     std::cout << "running" << "\n";
     std::cout.flush();
     //Image path
-    const char* input_path = "images/input.jpg";
+    const char* input_path = "../images/input.jpg";
     //load image (request 3 channels)
     int width, height, channels;
     unsigned char* img = stbi_load(input_path, &width, &height, &channels, 3);
@@ -56,9 +58,12 @@ int main() {
     fftw_plan planG_f = fftw_plan_dft_2d(height, width, inG, outG, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_plan planB_f = fftw_plan_dft_2d(height, width, inB, outB, FFTW_FORWARD, FFTW_ESTIMATE);
 
+    auto t_fft = std::chrono::high_resolution_clock::now();
     fftw_execute(planR_f);
     fftw_execute(planG_f);
     fftw_execute(planB_f);
+    auto t_fft_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> fft_time = t_fft_end - t_fft;
 
     // Highpass filter parameters
     double alpha = 1.0;
@@ -98,10 +103,13 @@ int main() {
     fftw_plan planG_b = fftw_plan_dft_2d(height, width, outG, revG, FFTW_BACKWARD, FFTW_ESTIMATE);
     fftw_plan planB_b = fftw_plan_dft_2d(height, width, outB, revB, FFTW_BACKWARD, FFTW_ESTIMATE);
 
+    auto t_ifft = std::chrono::high_resolution_clock::now();
     fftw_execute(planR_b);
     fftw_execute(planG_b);
     fftw_execute(planB_b);
-
+    auto t_ifft_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> ifft_time = t_ifft_end - t_ifft;
+    
     // Normalize inverse FFT output
     auto t_normalization = std::chrono::high_resolution_clock::now();
     #pragma omp parallel for collapse(2)
@@ -134,16 +142,29 @@ int main() {
     t_now = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> reverse_time = t_now - t_reverse_conversion;
 
-    stbi_write_png("images/output.png", width, height, 3, output_image, width * 3);
+    stbi_write_png("../images/output_partially_parallel.png", width, height, 3, output_image, width * 3);
     auto t_end = std::chrono::high_resolution_clock::now();
 
     std::chrono::duration<double> elapsed = t_end - t_start;
-    std::cout << "Total execution time: "
-          << elapsed.count() << " seconds\n";
-    std::cout << "RGB conversion: " << conversion_time.count() << " s\n";
-    std::cout << "Frequency filter: " << filter_time.count() << " s\n";
-    std::cout << "Normalization: " << normalization_time.count() << " s\n";
-    std::cout << "Reverse conversion: " << reverse_time.count() << " s\n";
+
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "\n╔════════════════════════════════════════════════════════════╗\n";
+    std::cout << "║  PARTIALLY PARALLEL - Performance Summary                  ║\n";
+    std::cout << "╚════════════════════════════════════════════════════════════╝\n\n";
+    std::cout << "RGB Conversion:    " << std::setw(8) << conversion_time.count() << " s\n";
+    std::cout << "FFT Forward:       " << std::setw(8) << fft_time.count() << " s\n";
+    std::cout << "Frequency Filter:  " << std::setw(8) << filter_time.count() << " s\n";
+    std::cout << "FFT Inverse:       " << std::setw(8) << ifft_time.count() << " s\n";
+    std::cout << "Normalization:     " << std::setw(8) << normalization_time.count() << " s\n";
+    std::cout << "Output Conversion: " << std::setw(8) << reverse_time.count() << " s\n";
+    std::cout << "─────────────────────────────\n";
+    std::cout << "Total Time:        " << std::setw(8) << elapsed.count() << " s\n\n";
+    // std::cout << "Total execution time: "
+    //       << elapsed.count() << " seconds\n";
+    // std::cout << "RGB conversion: " << conversion_time.count() << " s\n";
+    // std::cout << "Frequency filter: " << filter_time.count() << " s\n";
+    // std::cout << "Normalization: " << normalization_time.count() << " s\n";
+    // std::cout << "Reverse conversion: " << reverse_time.count() << " s\n";
 
     // Cleanup
     delete[] output_image;

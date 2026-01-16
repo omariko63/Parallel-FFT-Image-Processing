@@ -1,9 +1,11 @@
 /build/
 /bin/
+.vscode/
+.dist/
 *.exe
 *.dll
 *.o
 *.a
 *.lib
 *.DS_Store
-images/output.png
+images/output_*.png
